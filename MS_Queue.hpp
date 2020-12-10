@@ -18,32 +18,33 @@
 // defined files
 //***********************************************************************************
 using std::string;
+using std::atomic;
 using std::cout;
 using std::endl;
-using std::atomic;
 #define ACQREL std::memory_order_acq_rel
 #define ACQ std::memory_order_acquire
+#define RELAXED std::memory_order_relaxed
 
 //***********************************************************************************
 // data structure prototypes
 //***********************************************************************************
-struct node {
+struct ms_node {
 
     int val;
-    atomic<node*> next;
+    atomic<ms_node*> next;
 
 };
 
 class MS_queue{
 
     private:
-    atomic<node*> head, tail;
+    atomic<ms_node*> head, tail;
 
     public:
     MS_queue();
     ~MS_queue();
     void enqueue(int val);
-    int dequeue();
+    ms_node* dequeue();
 
 };
 

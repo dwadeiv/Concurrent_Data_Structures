@@ -85,6 +85,12 @@ void Locks::ticket_unlock() {
 
 }
 
+int Locks::try_acquire() {
+
+    pthread_mutex_trylock(&p_lock);
+
+}
+
 // lock.acquire handler function
 void Locks::acquire() {
 

@@ -23,10 +23,16 @@
 #include <string>
 #include <sstream>
 #include <vector>
-#include "M&S_Queue.hpp"
+#include <assert.h>
+#include "MS_Queue.hpp"
 #include "Treiber_Stack.hpp"
 #include "SGL_Queue.hpp"
 #include "SGL_Stack.hpp"
+#include "Data_Structure_Tester.hpp"
+
+using std::string;
+using std::endl;
+using std::cout;
 
 
 #endif

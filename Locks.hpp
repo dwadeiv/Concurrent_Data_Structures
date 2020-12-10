@@ -43,6 +43,8 @@ class Locks
         ~Locks();
         void acquire();
         void release();
+        int try_acquire();
+
 };
 
 #endif

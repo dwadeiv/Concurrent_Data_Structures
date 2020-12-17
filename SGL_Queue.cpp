@@ -17,23 +17,33 @@
 
 /***************************************************************************//**
  * @brief
- *  This is the constructor for the SGL_Stack Class
+ *  This is the constructor for the SGL_Queue class
  *
  * @details
- *  Initialize the global lock  and dummy node. Set head and tail to equal tp dummy
+ *  Initialize the global lock  and dummy sglQ_node. Set head and tail to equal tp dummy.
+ *  If optimization is turned on, initialize the flat combining array.  
  *
  * @note
  *  none
  *
  ******************************************************************************/
-SGL_Queue::SGL_Queue() {
+SGL_Queue::SGL_Queue(int number_of_threads) {
 
-    Locks global_lock(LOCK);
-    lock = &global_lock;
+    head = NULL;
+    tail = NULL;
 
-    node* dummy = new node;
-    head = dummy;
-    tail = dummy;
+    #ifdef FLAT_COMBINING_OPTIMIZATION_ON
+
+    NUM_THREADS = number_of_threads;
+    flat_combining_array = new atomic<sglQ_operations*>[number_of_threads];
+
+    for(int i = 0; i < number_of_threads; i++) {
+
+        flat_combining_array[i].store(NULL);
+
+    }
+
+    #endif
 
 }
 
@@ -42,7 +52,7 @@ SGL_Queue::SGL_Queue() {
  *  This is the destructor for the SGL_Queue class
  *
  * @details
- *  none
+ *  Deletes the flat combining array if it was created
  *
  * @note
  *  none
@@ -50,79 +60,115 @@ SGL_Queue::SGL_Queue() {
  ******************************************************************************/
 SGL_Queue::~SGL_Queue() {
 
-}
+    #ifdef FLAT_COMBINING_OPTIMIZATION_ON
 
-///////////////////////////////////   NEED TO IMPLEMENT OPTIMIZATION AND GARBAGE COLLECTION   ///////////////////////////////////////
+    delete [] flat_combining_array;
+
+    #endif
+
+}
 
 /***************************************************************************//**
  * @brief
  *  This is the dequeue method for the SGL_Queue class
  *
  * @details
- *  Function dequeues and returns the value of the dequeued node
+ *  Function dequeues and returns the value of the dequeued sglQ_node. Flat combining optimization makes it so lock holder
+ *  performs all the operartions in the array. Non lock holders, place their operations in the array. Every thread contends on lock after 
+ *  placing operation in the array. 
+ *  
  *
  * @note
- * 	Function will return NULL if queue is empty
+ * 	Function will return -1 if queue is empty
  *
  ******************************************************************************/
-int SGL_Queue::dequeue() {
+int SGL_Queue::dequeue(Locks* lock, int tid) {
 
+    #ifdef FLAT_COMBINING_OPTIMIZATION_ON
 
+    // Non lock holder
+    while(lock->try_acquire() == EBUSY) {
 
-}
+        // Not lock holder, so place operation into combining array
+        sglQ_operations* operation = new sglQ_operations;
+        operation->dequeue = true;
+        operation->enqueue = false;
 
-/***************************************************************************//**
- * @brief
- *  This is the enqueue method for the SGL_Queue class
- *
- * @details
- *  Places new node in the queue
- *
- * @note
- * 	none
- *
- * @param[in] val
- *  Value of the new node
- *
- ******************************************************************************/
-void SGL_Queue::enqueue(int val) {
+        while(true) {
 
-    node *imposter_tail, *true_end, *new_node;
-    new_node = new node;
-    new_node->val = val;
+            sglQ_operations* current_index = flat_combining_array[tid].load(ACQ);
+            if(flat_combining_array[tid].compare_exchange_strong(current_index,operation,ACQREL)) {
 
-    while(true) {
-
-        imposter_tail = tail;
-        true_end = imposter_tail->next;
-
-        if(imposter_tail == tail) {
-
-            if(true_end == NULL) {
-
-                if(true_end == imposter_tail->next) {
-
-                    lock->acquire();
-
-                    imposter_tail->next = new_node;
-
-                    lock->release();
-
-                    break;
-
-                }
+                while(lock->try_acquire() == EBUSY) {}
+                break;
 
             }
 
-            else if(true != NULL) {
+        }
 
-                if(imposter_tail == tail) {
+        break;
 
-                    lock->acquire();
+    }
 
-                    tail = true_end;
+    for(int i = 0; i < NUM_THREADS; i++) {
 
-                    lock->release();
+        sglQ_operations* current_operation = flat_combining_array[i].load(ACQ);
+
+        if(current_operation != NULL) {
+
+            // Making sure no other thread has changed the operation. Make index NULL. 
+            if(flat_combining_array[i].compare_exchange_strong(current_operation,NULL)) {
+
+                // perform enqueue
+                if(current_operation->enqueue) {
+
+                    lq_node* new_lq_node = new lq_node;
+                    new_lq_node->val = current_operation->enqueue_value;
+                    new_lq_node->next = NULL;
+
+                    if(!head || !tail) {
+
+                        head = new_lq_node;
+                        tail = new_lq_node;
+
+                    }
+
+                    else {
+
+                        tail->next = new_lq_node;
+                        tail = new_lq_node;
+
+                    }
+
+                    delete(current_operation);
+
+                }
+
+                // perrform dequeue
+                else if(current_operation->dequeue) {
+
+                    // Checking if there are contents in the queue
+                    if(!(!head || !tail)) {
+
+                        if(head == tail) {
+
+                            int value = head->val;
+                            head = NULL;
+                            tail = NULL;
+
+                        }
+                        else {
+
+                            lq_node* temp = head;
+                            head = head->next;
+                            int value = temp->val;
+                            delete(temp);
+
+                        }
+
+                    }
+
+                    delete(current_operation);
 
                 }
 
@@ -132,14 +178,241 @@ void SGL_Queue::enqueue(int val) {
 
     }
 
-    if(imposter_tail == tail) {
+    // Performing lock holder's operation
 
-        lock->acquire();
+    // Queue is not empty
+    if(!(!head || !tail)) {
 
-        tail = new_node;
+        if(head == tail) {
 
-        lock->release();
+            int value = head->val;
+            delete(head);
+            head = NULL;
+            tail = NULL;
+            lock->release();
+            return value;
+
+        }
+        else {
+
+            lq_node* temp = head;
+            head = head->next;
+            int value = temp->val;
+            delete(temp);
+            lock->release();
+            return value;
+
+        }
 
     }
+
+    // Queue is empty
+    else {
+
+        lock->release();
+        return -1;
+
+
+    }
+
+    lock->release();
+
+    #else
+
+    lock->acquire();
+
+    // Checking if there are contents in the queue
+    if(!(!head || !tail)) {
+
+        if(head == tail) {
+
+            int value = head->val;
+            delete(head);
+            head = NULL;
+            tail = NULL;
+            lock->release();
+            return value;
+
+        }
+        else {
+
+            lq_node* temp = head;
+            head = head->next;
+            int value = temp->val;
+            delete(temp);
+            lock->release();
+            return value;
+
+        }
+
+    }
+
+    // Queue is empty
+    else {
+
+        lock->release();
+        return -1;
+
+
+    }
+
+    lock->release();
+
+    #endif
+
+}
+
+/***************************************************************************//**
+ * @brief
+ *  This is the enqueue method for the SGL_Queue class
+ *
+ * @details
+ *  Places new sgLQ_node in the queue. Flat combining optimization makes it so lock holder
+ *  performs all the operartions in the array. Non lock holders, place their operations in the array. Every thread contends on lock after 
+ *  placing operation in the array. 
+ *
+ * @note
+ * 	none
+ *
+ * @param[in] val
+ *  Value of the new lq_node
+ *
+ ******************************************************************************/
+void SGL_Queue::enqueue(int val, Locks* lock, int tid) {
+
+    lq_node *new_lq_node;
+    new_lq_node = new lq_node;
+    new_lq_node->val = val;
+    new_lq_node->next = NULL;
+
+    #ifdef FLAT_COMBINING_OPTIMIZATION_ON
+
+    // Non lock holder
+    while(lock->try_acquire() == EBUSY) {
+
+        // Not lock holder, so place operation into combining array
+        sglQ_operations* operation = new sglQ_operations;
+        operation->dequeue = false;
+        operation->enqueue = true;
+        operation->enqueue_value = val;
+
+        while(true) {
+
+            sglQ_operations* current_index = flat_combining_array[tid].load(ACQ);
+            if(flat_combining_array[tid].compare_exchange_strong(current_index,operation,ACQREL)) {
+
+                while(lock->try_acquire() == EBUSY) {}
+                break;
+
+            }
+
+        }
+
+        break;
+
+    }
+
+    for(int i = 0; i < NUM_THREADS; i++) {
+
+        sglQ_operations* current_operation = flat_combining_array[i].load(ACQ);
+
+        if(current_operation != NULL) {
+
+            // Making sure no other thread has changed the operation. Make index NULL. 
+            if(flat_combining_array[i].compare_exchange_strong(current_operation,NULL)) {
+
+                if(current_operation->enqueue) {
+
+                    if(!head || !tail) {
+
+                        head = new_lq_node;
+                        tail = new_lq_node;
+
+                    }
+
+                    else {
+
+                        tail->next = new_lq_node;
+                        tail = new_lq_node;
+
+                    }
+
+                    delete(current_operation);
+
+                }
+
+                else if(current_operation->dequeue) {
+
+                    // Checking if there are contents in the queue
+                    if(!(!head || !tail)) {
+
+                        if(head == tail) {
+
+                            int value = head->val;
+                            head = NULL;
+                            tail = NULL;
+
+                        }
+                        else {
+
+                            lq_node* temp = head;
+                            head = head->next;
+                            int value = temp->val;
+                            delete(temp);
+
+                        }
+
+                    }
+                    delete(current_operation);
+
+                }
+
+            }
+
+        }
+
+    }
+
+    // Performing lock holder's operation
+
+    if(!head || !tail) {
+
+        head = new_lq_node;
+        tail = new_lq_node;
+
+    }
+
+    else {
+
+        tail->next = new_lq_node;
+        tail = new_lq_node;
+
+    }
+
+    lock->release();
+
+    return;
+
+    #else
+
+    lock->acquire();
+
+    if(!head || !tail) {
+
+        head = new_lq_node;
+        tail = new_lq_node;
+
+    }
+
+    else {
+
+        tail->next = new_lq_node;
+        tail = new_lq_node;
+
+    }
+
+    lock->release();
+
+    #endif
 
 }

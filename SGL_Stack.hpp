@@ -13,41 +13,57 @@
 
 #include <iostream>
 #include <atomic>
+#include <vector>
 #include "Locks.hpp"
 
 //***********************************************************************************
 // defined files
 //***********************************************************************************
-using std::string;
+using std::atomic;
 
-#define LOCK "ticket"
+#define ACQREL std::memory_order_acq_rel
+#define ACQ std::memory_order_acquire
+#define DELAY 200
+
+#define ELIMINATION_OPTIMIZATION_ON
+// #define FLAT_COMBINING_OPTIMIZATION_ON
+// #define NO_OPTIMIZATION
 
 //***********************************************************************************
 // data structure prototypes
 //***********************************************************************************
-
-struct node {
+struct ls_node {
 
     int val;
-    node* next;
+    ls_node* next;
 
 };
 
+struct sglS_operations {
 
-class SGL_Stack {
+    bool pop;
+    bool push;
+    int push_value;
+
+};
+
+class SGL_stack {
 
     private:
     Locks* lock;
-    node* top;
+    ls_node* top;
+    atomic<sglS_operations*>* elimination_array;
+    int ELIM_ARRAY_SIZE;
+    atomic<sglS_operations*>* flat_combining_array;
+    int NUM_THREADS;
 
     public:
-    SGL_Stack();
-    ~SGL_Stack();
-    void push(int val);
-    int pop();
-
-
+    SGL_stack(int number_of_threads, int iterations);
+    ~SGL_stack();
+    void push(int val, Locks* lock, int tid);
+    int pop(Locks* lock, int tid);
 
 };
 
 #endif
+

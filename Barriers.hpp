@@ -1,50 +1,56 @@
 /*
- * M&S_Queue.hpp
+ * Barriers.hpp
  *
- *  Created on: Dec 4th, 2020
+ *  Created on: Oct 18th, 2020
  *      Author: David Wade IV
  */
 
 //***********************************************************************************
 // Include files
 //***********************************************************************************
-#ifndef MS_HPP
-#define MS_HPP
-
-#include <iostream>
+#ifndef BAR_H
+#define BAR_H
 #include <atomic>
+#include <iostream>
+#include <string>
+#include <pthread.h>
+#include <assert.h>
 
 //***********************************************************************************
 // defined files
 //***********************************************************************************
+#define SEQ_CST std::memory_order_seq_cst
+#define RELAXED std::memory_order_relaxed
+
 using std::string;
-using std::cout;
-using std::endl;
-using std::atomic;
-#define ACQREL std::memory_order_acq_rel
-#define ACQ std::memory_order_acquire
 
 //***********************************************************************************
 // data structure prototypes
 //***********************************************************************************
-struct node {
+enum barrier_type {
 
-    int val;
-    atomic<node*> next;
+    sense_barrier,
+    pthread_barrier
 
 };
 
-class MS_queue{
-
+class Barriers
+{
     private:
-    atomic<node*> head, tail;
+        std::atomic<int> cnt;
+        std::atomic<int> sense;
+        barrier_type bar;
+        pthread_barrier_t p_bar;
+        void sense_wait();
+        int NUM_THREADS;
+
 
     public:
-    MS_queue();
-    ~MS_queue();
-    void enqueue(int val);
-    int dequeue();
-
+        Barriers(string barrierType, int number_of_threads);
+        ~Barriers();
+        void wait();
+        
+        
 };
 
-#endif                   
+#endif

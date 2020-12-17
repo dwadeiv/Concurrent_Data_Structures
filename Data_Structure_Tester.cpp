@@ -57,17 +57,23 @@ DS_Tester::~DS_Tester() {
 
 /***************************************************************************//**
  * @brief
- *  
+ *  This is the garbage collection method for the treiber stack. 
  *
  * @details
- *  
+ *  Finds the minimum epoch in which nodes can be freed, then scans the retired nodes list to free respectively.
  *
  * @note
- * 	Each thread will execute this method individually
+ * 	Each thread cleans up their own garbage
  *
- * @param[in] args
- *  
+ * @param[in] retired_nodes
+ *  List of retired nodes waiting to be freed
  *
+ * @param[in] reservations
+ *  List of each node's current epoch
+ * 
+ * @param[in] number_of_threads
+ *  Number of threads
+ * 
  ******************************************************************************/ 
 static void extermination_treiber(multimap<int,tstack_node*> &retired_nodes, atomic<int>* reservations, int number_of_threads) {
 
@@ -104,17 +110,23 @@ static void extermination_treiber(multimap<int,tstack_node*> &retired_nodes, ato
 
 /***************************************************************************//**
  * @brief
- *  
+ *  This is the garbage collection method for the m&s queue. 
  *
  * @details
- *  
+ *  Finds the minimum epoch in which nodes can be freed, then scans the retired nodes list to free respectively.
  *
  * @note
- * 	Each thread will execute this method individually
+ * 	Each thread cleans up their own garbage
  *
- * @param[in] args
- *  
+ * @param[in] retired_nodes
+ *  List of retired nodes waiting to be freed
  *
+ * @param[in] reservations
+ *  List of each node's current epoch
+ * 
+ * @param[in] number_of_threads
+ *  Number of threads
+ * 
  ******************************************************************************/ 
 static void extermination_ms(multimap<int,ms_node*> retired_nodes, atomic<int>* reservations, int number_of_threads) {
 
@@ -148,10 +160,12 @@ static void extermination_ms(multimap<int,ms_node*> retired_nodes, atomic<int>* 
 
 /***************************************************************************//**
  * @brief
- *  
+ *  This it the fork for the parallel testing of the Treiber Stack
  *
  * @details
- *  
+ *  Pushes numbers from a counter for the given number of iterations. Then immediatly pops for the given
+ *  number of iterations. This method uses epoch based reclamation for garbage collection. There are two counters that are used in this methhod. 
+ *  One that is in charge of when garbage collection occurs and the other for when the global epoch is increased.
  *
  * @note
  * 	Each thread will execute this method individually
@@ -202,6 +216,7 @@ static void* fork_Treiber(void* args){
 
         tstack_node* to_retire = t_stack->pop();
 
+        // Making sure the value isn't the end saginal 
         if(to_retire->val != -1) {
 
             bool flag = false;
@@ -228,7 +243,7 @@ static void* fork_Treiber(void* args){
         garbage_genocide_countdown += -1;
         time_shift_countdown += -1;
         
-
+        // performiong garbage collection when either garbage collection countdown hits zero or if at the end of all pops
         if(garbage_genocide_countdown == 0 || to_retire->val == -1) {
 
             if(retired_nodes.size() > 0) {
@@ -245,6 +260,7 @@ static void* fork_Treiber(void* args){
 
         }
         
+        // When time shift countdown is zzero, tid 0 will increment the global epoch
         if(tid == 0 && time_shift_countdown == 0) {
             
             epoch[0].store(time + 1, ACQREL);
@@ -256,6 +272,7 @@ static void* fork_Treiber(void* args){
     }
     
     
+    // Making sure all retired nodees are freed before exiting
     while(retired_nodes.begin() != retired_nodes.end()) {
         auto itr = retired_nodes.begin();
         delete(itr->second);
@@ -274,13 +291,15 @@ static void* fork_Treiber(void* args){
 
 /***************************************************************************//**
  * @brief
- *  
+ *  This it the fork for the parallel testing of the M&S Queue
  *
  * @details
- *  
+ *  Enqueues numbers from a counter for the given number of iterations. Then immediatly dequeues for the given
+ *  number of iterations. This method uses epoch based reclamation for garbage collection. There are two counters that are used in this methhod. 
+ *  One that is in charge of when garbage collection occurs and the other for when the global epoch is increased.
  *
  * @note
- * 	Each thread will execute this method individually
+ * 	Each thread will execute this method individually. An end signal of -1 is used to know when all pops have occured. 
  *
  * @param[in] args
  *  
@@ -328,6 +347,7 @@ static void* fork_MS(void* args){
 
         ms_node* to_retire = m_queue->dequeue();
 
+        // Making sure value isn't the end signal
         if(to_retire->val != -1) {
 
             bool flag = false;
@@ -354,7 +374,7 @@ static void* fork_MS(void* args){
         garbage_genocide_countdown += -1;
         time_shift_countdown += -1;
         
-
+        // performiong garbage collection when either garbage collection countdown hits zero or if at the end of all pops
         if(garbage_genocide_countdown == 0 || to_retire->val == -1) {
 
             if(retired_nodes.size() > 0) {
@@ -370,6 +390,7 @@ static void* fork_MS(void* args){
 
         }
         
+        // When time shift countdown is zzero, tid 0 will increment the global epoch
         if(tid == 0 && time_shift_countdown == 0) {
             
             epoch[0].store(time + 1, ACQREL);
@@ -381,6 +402,7 @@ static void* fork_MS(void* args){
     }
     
 
+    // Making sure all retired nodees are freed before exiting
     while(retired_nodes.begin() != retired_nodes.end()) {
         auto itr = retired_nodes.begin();
         delete(itr->second);
@@ -401,13 +423,13 @@ static void* fork_MS(void* args){
 
 /***************************************************************************//**
  * @brief
- *  
+ *  This it the fork for the parallel testing of the Single Global Lock Stack
  *
  * @details
- *  
- *
+ *  Pushes numbeers from a counter for the given number of iterations. Then immediatly pops for the given
+ *  number of iterations.
  * @note
- * 	Each thread will execute this method individually
+ * 	Each thread will execute this method individually. An end signal of -1 is used to know when all pops have occured. 
  *
  * @param[in] args
  *  
@@ -463,13 +485,13 @@ static void* fork_SGL_Stack(void* args){
 
 /***************************************************************************//**
  * @brief
- *  
+ *  This it the fork for the parallel testing of the Single Global Lock Queue
  *
  * @details
- *  
- *
+ *  Enqueues numbers from a counter for the given number of iterations. Then immediatly dequeues for the given
+ *  number of iterations.
  * @note
- * 	Each thread will execute this method individually
+ * 	Each thread will execute this method individually. An end signal of -1 is used to know when all pops have occured. 
  *
  * @param[in] args
  *  

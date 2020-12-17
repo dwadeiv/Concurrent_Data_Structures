@@ -23,9 +23,10 @@ using std::atomic;
 
 #define ACQREL std::memory_order_acq_rel
 #define ACQ std::memory_order_acquire
+#define DELAY 200
 
-// #define ELIMINATION_OPTIMIZATION_ON
-#define FLAT_COMBINING_OPTIMIZATION_ON
+#define ELIMINATION_OPTIMIZATION_ON
+// #define FLAT_COMBINING_OPTIMIZATION_ON
 // #define NO_OPTIMIZATION
 
 //***********************************************************************************

@@ -20,7 +20,8 @@
  *  This is the constructor for the Treiber_Stack Class
  *
  * @details
- *  Initialize the global lock and set top to a new instance of the tstack_node structß
+ *  Initialize the global lock and set top to a new instance of the tstack_node struct. If elimination optimization is enabled,
+ *  also intializes the elimination array and fills it with NULL values. 
  *
  * @note
  * none
@@ -51,7 +52,7 @@ T_stack::T_stack(int number_of_threads, int iterations) {
  *  This is the destructor for the Treiber_Stack class
  *
  * @details
- *  none
+ *  Deletes the elimination array if the optimization is turned on
  *
  * @note
  *  none
@@ -71,16 +72,16 @@ T_stack::~T_stack() {
 
 /***************************************************************************//**
  * @brief
- *  This is the push method for the Treiber_Stack class
+ *  This is a time delay function. 
  *
  * @details
- *  Pushes a new tstack_node to the top of the stack
+ *  none
  *
  * @note
  * 	none
  *
- * @param[in] val
- *  Value of the new top tstack_node
+ * @param[in] milliseconds
+ *  Length of delay in milliseconds
  *
  ******************************************************************************/
 static void time_delay(int milliseconds) {
@@ -96,7 +97,11 @@ static void time_delay(int milliseconds) {
  *  This is the pop method for the Treiber_Stack class
  *
  * @details
- *  Function pops the top of the stack and returns the value of the popped tstack_node
+ *  Function pops the top of the stack and returns the value of the popped tstack_node. Elimination optimization relieves 
+ *  contention on the global lock. The lock holder performs their operation and returns, non lock holders pick a random index in the elimination array 
+ *  and see what's in the index. If the complimentary operation is in the index, then the thread will perform both operations and return. If the index is NULL, 
+ *  then the operation will place its operation in the index and wait for some delay. It then checks if its operation was commpleted by another thread. If not,
+ *  it then contends on lock again. The process is repeated if the thread doesn't acquire the lock. 
  *
  * @note
  * 	Function will return NULL if stack is empty
@@ -117,7 +122,6 @@ tstack_node* T_stack::pop() {
              
         }
         
-        // SEG FAULT
         tstack_node* new_top = to_pop->next;
 
         bool success = top.compare_exchange_strong(to_pop, new_top, ACQREL);
@@ -196,7 +200,11 @@ tstack_node* T_stack::pop() {
  *  This is the push method for the Treiber_Stack class
  *
  * @details
- *  Pushes a new tstack_node to the top of the stack
+ *  Pushes a new tstack_node to the top of the stack. Elimination optimization relieves contention on the global lock. 
+ *  The lock holder performs their operation and returns, non lock holders pick a random index in the elimination array 
+ *  and see what's in the index. If the complimentary operation is in the index, then the thread will perform both operations and return. If the index is NULL, 
+ *  then the operation will place its operation in the index and wait for some delay. It then checks if its operation was commpleted by another thread. If not,
+ *  it then contends on lock again. The process is repeated if the thread doesn't acquire the lock. 
  *
  * @note
  * 	none

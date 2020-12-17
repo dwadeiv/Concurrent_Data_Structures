@@ -39,7 +39,7 @@ MS_queue::MS_queue() {
  *  This is the destructor for the M&S_Queue class
  *
  * @details
- *  none
+ *  delete head node
  *
  * @note
  *  none
@@ -57,10 +57,10 @@ MS_queue::~MS_queue() {
  *  This is the enqueue method for the M&S_Queue class
  *
  * @details
- *  Places new ms_node in the queue
+ *  Places new ms_node in the queue. Uses atomic operators (CAS) to create linearization points for the threads. 
  *
  * @note
- * 	none
+ * 	Funtion attempts to update imposter tail, but update is not guaranteed
  *
  * @param[in] val
  *  Value of the new ms_node
@@ -107,10 +107,10 @@ void MS_queue::enqueue(int val) {
  *  This is the dequeue method for the M&S_Queue class
  *
  * @details
- *  Function dequeues and returns the value of the dequeued ms_node
+ *  Function dequeues and returns the value of the dequeued ms_node. Uses atomic operators (CAS) to create linearization points for the threads.
  *
  * @note
- * 	Function will return NULL if queue is empty
+ * 	Function will return a node with a value of -1 when the queue is empty
  *
  ******************************************************************************/
 ms_node* MS_queue::dequeue() {

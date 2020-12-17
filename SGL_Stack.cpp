@@ -20,7 +20,9 @@
  *  This is the constructor for the SGL_Stack Class
  *
  * @details
- *  Initialize the global lock and set top to a new instance of the ls_node struct
+ *  Initialize the global lock  and top ls_node. If flat combining optimization is turned on,
+ *  initialize the flat combining array. If elimination opimizaation is turned on, initialize
+ *  the eliminations array. 
  *
  * @note
  * none
@@ -64,7 +66,8 @@ SGL_stack::SGL_stack(int number_of_threads, int iterations) {
  *  This is the destructor for the SGL_Stack class
  *
  * @details
- *  none
+ *  Deletes the flat combining array if it was created. Deletes the eliminations array 
+ *  if it was created
  *
  * @note
  *  none
@@ -90,16 +93,16 @@ SGL_stack::~SGL_stack() {
 
 /***************************************************************************//**
  * @brief
- *  This is the push method for the Treiber_Stack class
+ *  This is a time delay function. 
  *
  * @details
- *  Pushes a new tstack_node to the top of the stack
+ *  none
  *
  * @note
  * 	none
  *
- * @param[in] val
- *  Value of the new top tstack_node
+ * @param[in] milliseconds
+ *  Length of delay in milliseconds
  *
  ******************************************************************************/
 static void time_delay(int milliseconds) {
@@ -115,10 +118,18 @@ static void time_delay(int milliseconds) {
  *  This is the pop method for the SGL_Stack class
  *
  * @details
- *  Function pops the top of the stack and returns the value of the popped ls_node
+ *  Function pops the top of the stack and returns the value of the popped ls_node. Flat combining optimization makes it so lock holder
+ *  performs all the operartions in the array. Non lock holders, place their operations in the array. Every thread contends on lock after 
+ *  placing operation in the array. Elimination optimization is similar in that it also relievevs contention on the global lock. The lock holder
+ *  performs their operation and returns, non lock holders pick a random index in the elimination array and see what;s in the index. If the 
+ *  complimentary operation is in the index, then the thread will perform both operations and return. If the index is NULL, then the operation will
+ *  place its operation in the index and wait for some delay. It then checks if its operation was commpleted by another thread. If not,
+ *  it then contends on lock again. The process is repeated if the thread doesn't acquire the lock. 
+ *  
+ *  
  *
  * @note
- * 	Function will return NULL if stack is empty
+ * 	Function will return -1 if stack is empty
  *
  ******************************************************************************/
 int SGL_stack::pop(Locks* lock, int tid) {
@@ -129,6 +140,7 @@ int SGL_stack::pop(Locks* lock, int tid) {
 
         // Elimination optimization turned on
         #ifdef ELIMINATION_OPTIMIZATION_ON
+
 
         while(lock->try_acquire() == EBUSY) {
             
@@ -146,7 +158,7 @@ int SGL_stack::pop(Locks* lock, int tid) {
                 if(elimination_array[index].compare_exchange_strong(elimination_index, operation, ACQREL)) {
 
                     // Figure out how long to delay
-                    time_delay(200);
+                    time_delay(DELAY);
                     sglS_operations* temp = elimination_array[index].load(ACQ);
 
                     // No one combined while waiting
@@ -175,6 +187,25 @@ int SGL_stack::pop(Locks* lock, int tid) {
                 }
 
             }
+
+        }
+
+        if(top != NULL) {
+
+            ls_node* temp = top;
+            top = temp->next;
+            int value = temp->val;
+            delete(temp);
+
+            lock->release();
+
+            return value;
+        }
+
+        else {
+
+            lock->release();
+            return -1;
 
         }
 
@@ -312,7 +343,13 @@ int SGL_stack::pop(Locks* lock, int tid) {
  *  This is the push method for the SGL_Stack class
  *
  * @details
- *  Pushes a new ls_node to the top of the stack
+ *  Pushes a new ls_node to the top of the stack.Flat combining optimization makes it so lock holder
+ *  performs all the operartions in the array. Non lock holders, place their operations in the array. Every thread contends on lock after 
+ *  placing operation in the array. Elimination optimization is similar in that it also relievevs contention on the global lock. The lock holder
+ *  performs their operation and returns, non lock holders pick a random index in the elimination array and see what;s in the index. If the 
+ *  complimentary operation is in the index, then the thread will perform both operations and return. If the index is NULL, then the operation will
+ *  place its operation in the index and wait for some delay. It then checks if its operation was commpleted by another thread. If not,
+ *  it then contends on lock again. The process is repeated if the thread doesn't acquire the lock. 
  *
  * @note
  * 	none
@@ -322,6 +359,10 @@ int SGL_stack::pop(Locks* lock, int tid) {
  *
  ******************************************************************************/
 void SGL_stack::push(int val, Locks* lock, int tid) {
+
+    
+    ls_node* new_top = new ls_node;
+    new_top->val = val;
 
     // Elimination optimization turned on
     #ifdef ELIMINATION_OPTIMIZATION_ON
@@ -335,15 +376,15 @@ void SGL_stack::push(int val, Locks* lock, int tid) {
         if(elimination_index == NULL) {
 
             sglS_operations* operation = new sglS_operations;
-            operation->pop = true;
-            operation->push = false;
+            operation->pop = false;
+            operation->push = true;
             operation->push_value = val;
 
             // Place operation into array
             if(elimination_array[index].compare_exchange_strong(elimination_index, operation, ACQREL)) {
 
                 // Figure out how long to delay
-                time_delay(200);
+                time_delay(DELAY);
                 sglS_operations* temp = elimination_array[index].load(ACQ);
 
                 // No one combined while waiting
@@ -377,7 +418,6 @@ void SGL_stack::push(int val, Locks* lock, int tid) {
     }
 
     new_top->next = top;
-
     top = new_top;
 
     lock->release();
@@ -459,8 +499,8 @@ void SGL_stack::push(int val, Locks* lock, int tid) {
 
     }
 
-    ls_node* new_top = new ls_node;
-    new_top->val = val;
+    // ls_node* new_top = new ls_node;
+    // new_top->val = val;
 
 
     new_top->next = top;

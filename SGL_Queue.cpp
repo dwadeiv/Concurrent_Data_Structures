@@ -17,10 +17,11 @@
 
 /***************************************************************************//**
  * @brief
- *  This is the constructor for the SGL_Stack Class
+ *  This is the constructor for the SGL_Queue class
  *
  * @details
- *  Initialize the global lock  and dummy lq_node. Set head and tail to equal tp dummy
+ *  Initialize the global lock  and dummy sglQ_node. Set head and tail to equal tp dummy.
+ *  If optimization is turned on, initialize the flat combining array.  
  *
  * @note
  *  none
@@ -51,7 +52,7 @@ SGL_Queue::SGL_Queue(int number_of_threads) {
  *  This is the destructor for the SGL_Queue class
  *
  * @details
- *  none
+ *  Deletes the flat combining array if it was created
  *
  * @note
  *  none
@@ -72,10 +73,13 @@ SGL_Queue::~SGL_Queue() {
  *  This is the dequeue method for the SGL_Queue class
  *
  * @details
- *  Function dequeues and returns the value of the dequeued lq_node
+ *  Function dequeues and returns the value of the dequeued sglQ_node. Flat combining optimization makes it so lock holder
+ *  performs all the operartions in the array. Non lock holders, place their operations in the array. Every thread contends on lock after 
+ *  placing operation in the array. 
+ *  
  *
  * @note
- * 	Function will return NULL if queue is empty
+ * 	Function will return -1 if queue is empty
  *
  ******************************************************************************/
 int SGL_Queue::dequeue(Locks* lock, int tid) {
@@ -85,7 +89,7 @@ int SGL_Queue::dequeue(Locks* lock, int tid) {
     // Non lock holder
     while(lock->try_acquire() == EBUSY) {
 
-        // Not lock holder, so place operationinto combining array
+        // Not lock holder, so place operation into combining array
         sglQ_operations* operation = new sglQ_operations;
         operation->dequeue = true;
         operation->enqueue = false;
@@ -112,8 +116,10 @@ int SGL_Queue::dequeue(Locks* lock, int tid) {
 
         if(current_operation != NULL) {
 
+            // Making sure no other thread has changed the operation. Make index NULL. 
             if(flat_combining_array[i].compare_exchange_strong(current_operation,NULL)) {
 
+                // perform enqueue
                 if(current_operation->enqueue) {
 
                     lq_node* new_lq_node = new lq_node;
@@ -138,6 +144,7 @@ int SGL_Queue::dequeue(Locks* lock, int tid) {
 
                 }
 
+                // perrform dequeue
                 else if(current_operation->dequeue) {
 
                     // Checking if there are contents in the queue
@@ -171,7 +178,9 @@ int SGL_Queue::dequeue(Locks* lock, int tid) {
 
     }
 
-    // Checking if there are contents in the queue
+    // Performing lock holder's operation
+
+    // Queue is not empty
     if(!(!head || !tail)) {
 
         if(head == tail) {
@@ -258,7 +267,9 @@ int SGL_Queue::dequeue(Locks* lock, int tid) {
  *  This is the enqueue method for the SGL_Queue class
  *
  * @details
- *  Places new lq_node in the queue
+ *  Places new sgLQ_node in the queue. Flat combining optimization makes it so lock holder
+ *  performs all the operartions in the array. Non lock holders, place their operations in the array. Every thread contends on lock after 
+ *  placing operation in the array. 
  *
  * @note
  * 	none
@@ -279,7 +290,7 @@ void SGL_Queue::enqueue(int val, Locks* lock, int tid) {
     // Non lock holder
     while(lock->try_acquire() == EBUSY) {
 
-        // Not lock holder, so place operationinto combining array
+        // Not lock holder, so place operation into combining array
         sglQ_operations* operation = new sglQ_operations;
         operation->dequeue = false;
         operation->enqueue = true;
@@ -307,6 +318,7 @@ void SGL_Queue::enqueue(int val, Locks* lock, int tid) {
 
         if(current_operation != NULL) {
 
+            // Making sure no other thread has changed the operation. Make index NULL. 
             if(flat_combining_array[i].compare_exchange_strong(current_operation,NULL)) {
 
                 if(current_operation->enqueue) {
@@ -361,6 +373,7 @@ void SGL_Queue::enqueue(int val, Locks* lock, int tid) {
 
     }
 
+    // Performing lock holder's operation
 
     if(!head || !tail) {
 

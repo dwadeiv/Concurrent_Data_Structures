@@ -1,5 +1,32 @@
+/**
+ * @file Driver.cpp
+ * @author David Wade IV
+ * @date October 18th, 2020
+ * @brief This is the main driver for this project
+ *
+ */
+
+//***********************************************************************************
+// Include files
+//***********************************************************************************
 #include "Driver.hpp"
 
+//***********************************************************************************
+// functions
+//***********************************************************************************
+
+/***************************************************************************//**
+ * @brief
+ *  This is main
+ *
+ * @details
+ *  Parses the command line arguments, making sure syntax and arguments are correct, then calling 
+ *  the test method
+ *
+ * @note
+ * none
+ *
+ ******************************************************************************/
 int main(int argc, char* argv[]){
 	
 	// parse args
